@@ -1,0 +1,180 @@
+name: mongo-sharding-repl
+
+x-mongodb-template:
+  mongodb-service: &mongodb-service
+    image: mongo:latest
+    restart: always
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+services:
+  config-srv-1:
+    <<: *mongodb-service
+    command: mongod --configsvr --replSet cfg-srv-rs --port 27017 --bind_ip_all
+    ports:
+      - "27017:27017"
+    volumes:
+      - cfg-srv-data-vol:/data/db
+      - cfg-srv-config-vol:/data/configdb
+
+  shard-1-repl-1:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-1 --port 27017 --bind_ip_all
+    depends_on:
+      - config-srv-1
+    ports:
+      - "27118:27017"
+    volumes:
+      - shard-1-repl-1-data-vol:/data/db
+
+  shard-1-repl-2:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-1 --port 27017 --bind_ip_all
+    depends_on:
+      - shard-1-repl-1
+    ports:
+      - "27119:27017"
+    volumes:
+      - shard-1-repl-2-data-vol:/data/db
+
+  shard-1-repl-3:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-1 --port 27017 --bind_ip_all
+    depends_on:
+      - shard-1-repl-1
+    ports:
+      - "27120:27017"
+    volumes:
+      - shard-1-repl-3-data-vol:/data/db
+
+  shard-2-repl-1:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-2 --port 27017 --bind_ip_all
+    depends_on:
+      - config-srv-1
+    ports:
+      - "27218:27017"
+    volumes:
+      - shard-2-repl-1-data-vol:/data/db
+
+  shard-2-repl-2:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-2 --port 27017 --bind_ip_all
+    depends_on:
+      - shard-2-repl-1
+    ports:
+      - "27219:27017"
+    volumes:
+      - shard-2-repl-2-data-vol:/data/db
+
+  shard-2-repl-3:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-2 --port 27017 --bind_ip_all
+    depends_on:
+      - shard-2-repl-1
+    ports:
+      - "27220:27017"
+    volumes:
+      - shard-2-repl-3-data-vol:/data/db
+
+  shard-3-repl-1:
+    <<: *mongodb-service
+    depends_on:
+      - config-srv-1
+    command: mongod --shardsvr --replSet shard-3 --port 27017 --bind_ip_all
+    ports:
+      - "27318:27017"
+    volumes:
+      - shard-3-repl-1-data-vol:/data/db
+
+  shard-3-repl-2:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-3 --port 27017 --bind_ip_all
+    depends_on:
+      - shard-3-repl-1
+    ports:
+      - "27319:27017"
+    volumes:
+      - shard-3-repl-2-data-vol:/data/db
+
+  shard-3-repl-3:
+    <<: *mongodb-service
+    command: mongod --shardsvr --replSet shard-3 --port 27017 --bind_ip_all
+    depends_on:
+      - shard-3-repl-1
+    ports:
+      - "27320:27017"
+    volumes:
+      - shard-3-repl-3-data-vol:/data/db
+
+  mongos-router:
+    <<: *mongodb-service
+    command: mongos --configdb cfg-srv-rs/config-srv-1:27017 --port 27017 --bind_ip_all
+    depends_on:
+      - config-srv-1
+      - shard-1-repl-1
+      - shard-1-repl-2
+      - shard-1-repl-3
+      - shard-2-repl-1
+      - shard-2-repl-2
+      - shard-2-repl-3
+      - shard-3-repl-1
+      - shard-3-repl-2
+      - shard-3-repl-3
+    ports:
+      - "27117:27017"
+
+  pymongo-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - mongos-router
+    ports:
+      - '8080:8080'
+    networks:
+      - app-network
+    environment:
+      MONGODB_URL: "mongodb://mongos-router"
+      MONGODB_DATABASE_NAME: "somedb"
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  cfg-srv-data-vol:
+    name: cfg-srv-data
+    driver: local
+  cfg-srv-config-vol:
+    name: cfg-srv-config
+    driver: local
+  shard-1-repl-1-data-vol:
+    name: shard-1-repl-1-data
+    driver: local
+  shard-1-repl-2-data-vol:
+    name: shard-1-repl-2-data
+    driver: local
+  shard-1-repl-3-data-vol:
+    name: shard-1-repl-3-data
+    driver: local
+  shard-2-repl-1-data-vol:
+    name: shard-2-repl-1-data
+    driver: local
+  shard-2-repl-2-data-vol:
+    name: shard-2-repl-2-data
+    driver: local
+  shard-2-repl-3-data-vol:
+    name: shard-2-repl-3-data
+  shard-3-repl-1-data-vol:
+    name: shard-3-repl-1-data
+    driver: local
+  shard-3-repl-2-data-vol:
+    name: shard-3-repl-2-data
+    driver: local
+  shard-3-repl-3-data-vol:
+    name: shard-3-repl-3-data
